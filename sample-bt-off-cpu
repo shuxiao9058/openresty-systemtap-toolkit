@@ -20,7 +20,8 @@ GetOptions("a=s",       \(my $stap_args),
            "min=i",     \(my $min_elapsed),
            "p=i",       \(my $pid),
            "t=i",       \(my $time),
-           "u",         \(my $check_user))
+           "u",         \(my $check_user),
+           "tid=i",     \(my $tid))
     or die usage();
 
 if ($help) {
@@ -37,6 +38,9 @@ if (!defined $pid) {
 }
 
 my $condition = "pid() == target()";
+if (defined $tid) {
+    $condition = "pid() == target() && tid() == $tid"
+}
 
 if (!defined $time) {
     die "No -t <seconds> option specified.\n";
@@ -299,6 +303,7 @@ Options:
     -p <pid>            Specify the user process pid.
     -t <seconds>        Specify the number of seconds for sampling.
     -u                  Analyze userspace backtraces.
+    --tid <tid>         Specify the user thread id.
 
 Examples:
     sample-bt-off-cpu -p 12345 -t 10
