@@ -1,0 +1,65 @@
+#!/usr/bin/env perl
+
+# Copyright (C) Yichun Zhang (agentzh)
+
+# Thanks Brendan Gregg for the inspiration given here:
+#   http://dtrace.org/blogs/brendan/2011/07/08/off-cpu-performance-analysis/
+
+use 5.006001;
+use strict;
+use warnings;
+
+use Getopt::Long qw( GetOptions );
+
+GetOptions("h",         \(my $help),
+           "p=i",       \(my $pid))
+    or die usage();
+
+if ($help) {
+    print usage();
+    exit;
+}
+
+if (!defined $pid) {
+    die "No process pid specified by the -p option.\n";
+}
+
+my $d_so_args = '';
+
+my %so_files;
+{
+	my $maps_file = "/proc/$pid/maps";
+	open my $in, $maps_file
+		or die "Cannot open $maps_file for reading: $!\n";
+
+	while (<$in>) {
+		if (/\s+(\/\S+\.so(?:\.\S+)?)$/) {
+			if (!exists $so_files{$1}) {
+				$so_files{$1} = 1;
+				#warn $1, "\n";
+			}
+		}
+	}
+
+	close $in;
+}
+
+if (%so_files) {
+	$d_so_args = join " ", map { "-d $_" } sort keys %so_files;
+}
+
+print "$d_so_args\n";
+
+sub usage {
+    return <<'_EOC_';
+Usage:
+    sample-print-so [optoins]
+
+Options:
+    -h                  Print this usage.
+    -p <pid>            Specify the user process pid.
+
+Examples:
+    sample-print-so -p 12345
+_EOC_
+}
