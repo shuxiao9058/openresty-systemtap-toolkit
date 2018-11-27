@@ -19,26 +19,63 @@ if (!defined $pid) {
     die "No process pid specified by the -p option.\n";
 }
 
-my $stap_args = " -DMAXACTION=100000 -DMAXBACKTRACE=200 -DMAXSTRINGLEN=2048";
+my $stap_args = " -DSTP_NO_OVERLOAD -DMAXACTION=1000000 -DMAXMAPENTRIES=500000 -DMAXBACKTRACE=200 -DMAXSTRINGLEN=2048";
 
 
 my $stap_src;
 $stap_src = <<_EOC_;
+global ptr2bt
+global ptr2size
+global bt_stats
+global quit
+
 probe begin {
-	printf("begin to probe\\n")
+    warn("Start tracing. Wait for 10 sec to complete.\\n")
 }
 
-probe process("/var/lib/ceph/bin/ceph-osd").function("_ZN3OSD10dequeue_opEN5boost13intrusive_ptrI2PGEENS1_I9OpRequestEERN10ThreadPool8TPHandleE") {
-	if (pid() == target()) {
-		printf("%d %s\\n", tid(), execname())
-		print_ubacktrace()
-		printf("\\n")
-	}
+probe process("/usr/lib64/libc-2.17.so").function("malloc").return {
+    if (pid() == target()) {
+        if (quit) {
+            foreach (bt in bt_stats) {
+                print_ustack(bt)
+                printf("\\t%d\\n", \@sum(bt_stats[bt]))
+            }
+
+            exit()
+
+        } else {
+            #printf("malloc: %p (bytes %d)\\n", \$return, \$bytes)
+            ptr = \$return
+            bt = ubacktrace()
+            ptr2bt[ptr] = bt
+            ptr2size[ptr] = \$bytes
+            bt_stats[bt] <<< \$bytes
+        }
+    }
 }
 
-probe timer.s(120) {
-	printf("end to probe\\n")
-	exit()
+probe process("/usr/lib64/libc-2.17.so").function("free") {
+    if (pid() == target()) {
+        #printf("free: %p\\n", \$mem)
+        ptr = \$mem
+
+        bt = ptr2bt[ptr]
+        delete ptr2bt[ptr]
+
+        bytes = ptr2size[ptr]
+        delete ptr2size[ptr]
+
+        bt_stats[bt] <<< -bytes
+        if (\@sum(bt_stats[bt]) == 0) {
+            delete bt_stats[bt]
+        }
+    }
+}
+
+probe timer.s(30) {
+    quit = 1
+    delete ptr2bt
+    delete ptr2size
 }
 _EOC_
 
@@ -93,6 +130,6 @@ Options:
     -p <pid>            Specify the user process pid.
 
 Examples:
-    func-stap -p 12345
+    memleak-stap -p 12345
 _EOC_
 }

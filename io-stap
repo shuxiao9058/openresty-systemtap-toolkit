@@ -95,6 +95,6 @@ Options:
     -p <pid>            Specify the user process pid.
 
 Examples:
-    osd-stap -p 12345
+    io-stap -p 12345
 _EOC_
 }

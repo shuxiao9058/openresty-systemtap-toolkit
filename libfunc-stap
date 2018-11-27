@@ -93,6 +93,6 @@ Options:
     -p <pid>            Specify the user process pid.
 
 Examples:
-    osd-stap -p 12345
+    libfunc-stap -p 12345
 _EOC_
 }
