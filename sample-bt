@@ -10,7 +10,7 @@ use Getopt::Std qw( getopts );
 
 my %opts;
 
-getopts("a:dhl:p:t:uk", \%opts)
+getopts("a:dhli:p:t:uk", \%opts)
     or die usage();
 
 if ($opts{h}) {
@@ -24,6 +24,17 @@ my $pid = $opts{p}
 if ($pid !~ /^\d+$/) {
     die "Bad -p option value \"$pid\": not look like a pid.\n";
 }
+
+########
+my $threadid = 0;
+if ($opts{i}) {
+  $threadid = $opts{i};
+  if ($threadid !~ /^\d+$/) {
+    die "Bad -p option value \"$threadid\": not look like a thread id.\n";
+  }
+}
+my $thread_cond = "tid() == $threadid";
+########
 
 my $condition = "pid() == target()";
 
@@ -126,7 +137,6 @@ probe timer.profile {
     if ($condition) {
         if (!quit) {
             bts[backtrace(), ubacktrace()] <<< 1
-
         } else {
 
             foreach ([sys, usr] in bts- limit $limit) {
@@ -167,24 +177,38 @@ global quit = 0;
 
 probe timer.profile {
     if ($condition) {
+       if ($threadid) { 
         if (!quit) {
-            bts[ubacktrace()] <<< 1;
-
+            if ($thread_cond) {
+                bts[ubacktrace(), tid(), execname()] <<< 1;
+            }
         } else {
-
-            foreach (bt in bts- limit $limit) {
+            foreach ([bt, id, name] in bts- limit $limit) {
+                printf("%d %s %d\\n", id, name, \@count(bts[bt, id, name]));
                 print_ustack(bt);
-                printf("\\t%d\\n", \@count(bts[bt]));
+                printf("\\n");
             }
 
             exit()
         }
-    }
+      } else {
+       if (!quit) {
+            bts[ubacktrace(), tid(), execname()] <<< 1;
+        } else {
+            foreach ([bt, id, name] in bts- limit $limit) {
+                printf("%d %s %d\\n", id, name, \@count(bts[bt, id, name]));
+                print_ustack(bt);
+                printf("\\n");
+            }
+            exit()
+        } 
+      }
+    } 
 }
 
 probe timer.s($time) {
     nstacks = 0
-    foreach (bt in bts limit 1) {
+    foreach ([bt, id, name] in bts limit 1) {
         nstacks++
     }
 
@@ -225,7 +249,7 @@ probe end {
     } else {
         foreach (bt in bts- limit $limit) {
             print_stack(bt)
-            printf("\\t%d\\n", \@count(bts[bt]))
+            #printf("\\t%d\\n", \@count(bts[bt]))
         }
     }
 }
@@ -287,6 +311,7 @@ Options:
     -l <count>          Only output <count> most frenquent backtrace samples.
                         (Default to 1024)
     -p <pid>            Specify the user process pid.
+    -i <threadid>       Specify the user thread pid in the process.
     -t <seconds>        Specify the number of seconds for sampling.
     -u                  Sample in the user-space.
     -k                  Sample in the kernel-space.
